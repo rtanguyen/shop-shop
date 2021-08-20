@@ -10,6 +10,7 @@ import {
   ADD_TO_CART,
   UPDATE_PRODUCTS,
 } from "../utils/actions";
+import { idbPromise } from "../utils/helpers";
 import spinner from "../assets/spinner.gif";
 
 import Cart from "../components/Cart";
@@ -26,10 +27,24 @@ function Detail() {
     if (products.length) {
       setCurrentProduct(products.find((product) => product._id === id));
       //if no products saved in global state, we'll use the product data that we returned from the useQuery() Hook to set the product data to the global state object
-    } else if (data) {
+    }
+    //retrieved from server
+    else if (data) {
       dispatch({
         type: UPDATE_PRODUCTS,
         products: data.products,
+      });
+      data.products.forEach((product) => {
+        idbPromise("products", "put", product);
+      });
+    }
+    //get cache from idb
+    else if (!loading) {
+      idbPromise("products", "get").then((indexedProducts) => {
+        dispatch({
+          type: UPDATE_PRODUCTS,
+          products: indexedProducts,
+        });
       });
     }
   }, [products, data, dispatch, id]);
@@ -43,11 +58,18 @@ function Detail() {
         _id: id,
         purchaseQuantity: parseInt(itemInCart.purchaseQuantity) + 1,
       });
+      //if we're updating quantity ,use existing item data and increment purchaseQuantity value by 1
+      idbPromise("cart", "put", {
+        ...itemInCart,
+        purchaseQuantity: parseInt(itemInCart.purchaseQuantity) + 1,
+      });
     } else {
       dispatch({
         type: ADD_TO_CART,
         product: { ...currentProduct, purchaseQuantity: 1 },
       });
+      //if product isn't in cart yet, add to current shopping cart in indexedDB
+      idbPromise("cart", "put", { ...currentProduct, purchaseQuantity: 1 });
     }
   };
 
@@ -56,6 +78,9 @@ function Detail() {
       type: REMOVE_FROM_CART,
       _id: currentProduct._id,
     });
+
+    //upon removal from cart, delete item from indexedDB using 'currentProduct._id' to locate what to remove
+    idbPromise("cart", "delete", { ...currentProduct });
   };
 
   return (
